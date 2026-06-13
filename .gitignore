@@ -17,6 +17,7 @@ node_modules/
 dist/
 .vite/
 .next/
+*.tsbuildinfo
 
 # Build artifacts / logs
 artifacts/
