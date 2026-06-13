@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="Chronicle Omega">
+  <defs>
+    <linearGradient id="ring" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#3a78ff"/>
+      <stop offset="100%" stop-color="#0052ff"/>
+    </linearGradient>
+    <linearGradient id="omega" x1="0" y1="14" x2="0" y2="50" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#dde6ff"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="64" height="64" rx="14" fill="#0a0d14"/>
+  <circle cx="32" cy="32" r="24" stroke="url(#ring)" stroke-width="2.5" fill="none"/>
+  <circle cx="32" cy="6.5" r="2.4" fill="#0052ff"/>
+  <circle cx="54.5" cy="44.7" r="2.4" fill="#00d395"/>
+  <circle cx="9.5" cy="44.7" r="2.4" fill="#0052ff"/>
+  <path d="M22.4 41.4 q-4.4 -4.6 -4.4 -11.0 q0 -6.6 4.0 -10.6 q4.0 -4.0 10.0 -4.0 q6.0 0 10.0 4.0 q4.0 4.0 4.0 10.6 q0 6.4 -4.4 11.0 l5.4 0 v3.6 h-9.0 v-4.6 q4.0 -4.0 4.0 -10.0 q0 -4.6 -2.7 -7.4 q-2.7 -2.8 -7.3 -2.8 q-4.6 0 -7.3 2.8 q-2.7 2.8 -2.7 7.4 q0 6.0 4.0 10.0 v4.6 h-9.0 v-3.6 z" fill="url(#omega)"/>
+</svg>
