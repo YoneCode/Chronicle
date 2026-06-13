@@ -1,0 +1,43 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.gltest_cache/
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+.next/
+
+# Build artifacts / logs
+artifacts/
+*.log
+build/
+out/
+
+# Tooling / personal workspace
+.kiro/
+.impeccable/
+.DS_Store
+.idea/
+.vscode/
+.claude/
+.cursor/
+*.swp
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Cloudflare local dev
+.wrangler/
