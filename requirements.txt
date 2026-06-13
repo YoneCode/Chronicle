@@ -1,0 +1,8 @@
+genvm-linter
+genlayer-test
+genlayer-py
+requests
+python-dotenv
+eth-account
+eth-utils
+pytest
