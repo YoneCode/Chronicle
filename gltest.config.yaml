@@ -1,0 +1,9 @@
+paths:
+  contracts: contracts/
+  artifacts: artifacts/
+
+# testnet_bradbury is a preconfigured network. Run integration tests with:
+#   gltest tests/integration/ -v -s --network testnet_bradbury
+# Provide the signing key by exporting ACCOUNT_PRIVATE_KEY (from your .env)
+# in the shell before running, e.g.:
+#   set -a && . ./.env && set +a && gltest tests/integration/ -v -s --network testnet_bradbury
