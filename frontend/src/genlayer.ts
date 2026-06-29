@@ -141,6 +141,7 @@ export const api = {
  */
 export async function getWriteClient(wallet: any) {
   ensureConfigured();
+  console.warn("[GL] wallet type:", wallet?.walletClientType, "connector:", wallet?.connectorType, "rpc:", chainRpcUrl());
   const provider = await wallet.getEthereumProvider();
   // Point the wallet's RPC for this chain at the id-normalizing /rpc proxy so
   // its broadcast doesn't hit the node with a string id.

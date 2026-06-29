@@ -33,10 +33,11 @@ function Console() {
     <PrivyProvider
       appId={privyAppId}
       config={{
-        appearance: { theme: "dark", accentColor: "#d4af6e" },
+        appearance: { theme: "dark", accentColor: "#d4af6e", walletList: [] },
+        loginMethods: ["email"],
         defaultChain: bradbury as any,
         supportedChains: [bradbury as any],
-        embeddedWallets: { createOnLogin: "users-without-wallets" },
+        embeddedWallets: { createOnLogin: "all-users" },
       }}
     >
       <App />
