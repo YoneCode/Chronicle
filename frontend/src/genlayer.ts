@@ -141,21 +141,26 @@ export const api = {
  */
 export async function getWriteClient(wallet: any) {
   ensureConfigured();
-  console.warn("[GL] wallet type:", wallet?.walletClientType, "connector:", wallet?.connectorType, "rpc:", chainRpcUrl());
-  const provider = await wallet.getEthereumProvider();
-  // Point the wallet's RPC for this chain at the id-normalizing /rpc proxy so
-  // its broadcast doesn't hit the node with a string id.
-  await ensureWalletNetwork(provider);
-  try {
-    await wallet.switchChain(CHAIN_ID);
-  } catch {
-    /* already handled by ensureWalletNetwork */
+  const address = wallet.address as `0x${string}`;
+  const injected = typeof window !== "undefined" ? (window as any).ethereum : undefined;
+  const isEmbedded = wallet?.walletClientType === "privy" || wallet?.connectorType === "embedded";
+
+  // Official GenLayer browser flow for injected wallets (MetaMask, Rabby, …):
+  // client.connect() installs the GenLayer MetaMask Snap and switches the wallet
+  // to Bradbury. The Snap performs GenLayer signing/submission with INTEGER
+  // json-rpc ids — which is what makes a wallet-signed tx actually land, since
+  // the node rejects the string ids a raw wallet broadcast would send.
+  if (!isEmbedded && injected) {
+    const client = createClient({ chain: testnetBradbury, account: address } as any);
+    await (client as any).connect("testnetBradbury");
+    return client;
   }
-  return createClient({
-    chain: testnetBradbury,
-    account: wallet.address as `0x${string}`,
-    provider,
-  } as any);
+
+  // Embedded (Privy) wallet has no Snap: route its broadcast through the
+  // id-normalizing /rpc proxy instead.
+  const provider = await wallet.getEthereumProvider();
+  await ensureWalletNetwork(provider);
+  return createClient({ chain: testnetBradbury, account: address, provider } as any);
 }
 
 export async function writeContract(
