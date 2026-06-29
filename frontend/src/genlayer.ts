@@ -4,71 +4,6 @@ import { testnetBradbury } from "genlayer-js/chains";
 export const CONTRACT_ADDRESS = (import.meta.env.VITE_CONTRACT_ADDRESS || "") as `0x${string}`;
 export const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID || "4221");
 
-// GenLayer Bradbury RPC. The Go node here strictly requires an INTEGER
-// JSON-RPC `id`. We broadcast raw transactions through this endpoint ourselves
-// (with an integer id) instead of letting the wallet's RPC layer do it.
-const RPC_URL = "https://rpc-bradbury.genlayer.com";
-
-/**
- * Wrap an EIP-1193 wallet provider (e.g. Privy) to fix a transport bug:
- *
- * GenLayer's node rejects any JSON-RPC request whose `id` is a string with
- * "cannot unmarshal string into Request.id of type int". Some embedded wallets
- * (Privy) broadcast `eth_sendTransaction` through their own JSON-RPC layer using
- * string/uuid ids, which the node refuses — so signed transactions never land.
- *
- * Fix: intercept `eth_sendTransaction`. Ask the wallet to only SIGN the
- * (fully-formed) transaction via `eth_signTransaction`, then broadcast the raw
- * signed tx ourselves via `eth_sendRawTransaction` with an integer id. Every
- * other method (chain id, message signing, accounts) passes straight through.
- *
- * Wallets that don't support `eth_signTransaction` (e.g. MetaMask, which already
- * uses integer ids) transparently fall back to their own broadcast.
- */
-function wrapProviderForGenLayer(provider: any) {
-  return {
-    ...provider,
-    async request(args: { method: string; params?: any[] }) {
-      const method = args?.method;
-      if (method !== "eth_sendTransaction") {
-        return provider.request(args);
-      }
-      try {
-        const signed = await provider.request({ method: "eth_signTransaction", params: args.params ?? [] });
-        const raw =
-          typeof signed === "string"
-            ? signed
-            : signed?.raw ?? signed?.rawTransaction ?? signed?.serialized ?? signed?.signedTransaction;
-        if (typeof raw !== "string" || !raw.startsWith("0x")) {
-          // Unexpected shape — let the wallet broadcast as a last resort.
-          return provider.request(args);
-        }
-        const res = await fetch(RPC_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method: "eth_sendRawTransaction", params: [raw] }),
-        });
-        const data = await res.json();
-        if (data?.error) throw data.error;
-        return data.result;
-      } catch (e: any) {
-        const msg = String(e?.message ?? e?.data ?? "").toLowerCase();
-        // Only fall back when the wallet can't sign-only; otherwise surface the real error.
-        if (
-          msg.includes("eth_signtransaction") ||
-          msg.includes("not support") ||
-          msg.includes("unsupported") ||
-          msg.includes("method not found") ||
-          msg.includes("not available")
-        ) {
-          return provider.request(args);
-        }
-        throw e;
-      }
-    },
-  };
-}
-
 export type Covenant = {
   covenant_id: string;
   owner: string;
@@ -174,7 +109,7 @@ export async function getWriteClient(wallet: any) {
   return createClient({
     chain: testnetBradbury,
     account: wallet.address as `0x${string}`,
-    provider: wrapProviderForGenLayer(provider),
+    provider,
   } as any);
 }
 
