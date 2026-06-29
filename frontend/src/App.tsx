@@ -109,7 +109,16 @@ export default function App() {
     setError(null); setNotice(null);
     if (!w.authenticated || !w.wallet) { w.login(); return; }
     try { setNotice(`${label}…`); const hash = await fn(); setNotice(`${label} sealed · ${shortAddr(hash)}`); setDrawer(null); await refresh(); }
-    catch (e: any) { setError(e?.message ?? String(e)); setNotice(null); }
+    catch (e: any) {
+      const raw = e?.message ?? String(e);
+      const idBug = /unmarshal string into|Request\.id of type int|RPC submit/i.test(raw);
+      setError(
+        idBug
+          ? "Your wallet is broadcasting through a network whose RPC the GenLayer node rejects. In your wallet, set the GenLayer Bradbury (chain 4221) RPC URL to this site’s /rpc endpoint, then retry. Email-login (embedded) wallets are routed automatically."
+          : raw,
+      );
+      setNotice(null);
+    }
   }
 
   return (
