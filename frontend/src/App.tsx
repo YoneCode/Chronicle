@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWalletAuth } from "./useWalletAuth";
-import { api, writeContract, CONTRACT_ADDRESS, type Covenant, type Checkpoint } from "./genlayer";
+import { api, writeContract, getTxStatus, CONTRACT_ADDRESS, type Covenant, type Checkpoint } from "./genlayer";
 import { gen, pct, fmtPct, bpsToPct, shortAddr, toBig, health } from "./format";
+import { txUrl } from "./lifecycle";
 import { Sigil, Strata, Engraving, Strand, MiniStrata } from "./charts";
 import { WalletPill } from "./WalletPill";
 
@@ -42,6 +43,8 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [txHash, setTxHash] = useState<string | null>(null);
   const [drawer, setDrawer] = useState<{ type: "register" | "fund"; id?: string } | null>(null);
   const [nav, setNav] = useState("docket");
   const inFlight = useRef(false);
@@ -105,20 +108,54 @@ export default function App() {
     return [...covenants].sort((a, b) => (toBig(b.capital_committed) > toBig(a.capital_committed) ? 1 : -1))[0];
   }, [covenants, selected]);
 
+  async function pollTx(hash: string, label: string) {
+    const deadline = Date.now() + 150_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 4000));
+      const s = await getTxStatus(hash);
+      if (s === "ACCEPTED" || s === "FINALIZED") {
+        setNotice(`${label} ${s.toLowerCase()} ✓`);
+        await refresh();
+        return;
+      }
+      if (s === "UNDETERMINED" || s === "CANCELED" || s === "LEADER_TIMEOUT") {
+        setNotice(null);
+        setError(`${label} didn't reach consensus (${s}). You can retry.`);
+        return;
+      }
+      setNotice(`${label} · ${s.toLowerCase()}…`);
+    }
+    setNotice(`${label} still pending — track it on the explorer.`);
+  }
+
   async function runWrite(fn: () => Promise<string>, label: string) {
-    setError(null); setNotice(null);
+    setError(null); setNotice(null); setTxHash(null);
     if (!w.authenticated || !w.wallet) { w.login(); return; }
-    try { setNotice(`${label}…`); const hash = await fn(); setNotice(`${label} sealed · ${shortAddr(hash)}`); setDrawer(null); await refresh(); }
-    catch (e: any) {
+    setBusy(true);
+    setNotice(`Confirm "${label}" in your wallet…`);
+    let hash: string;
+    try {
+      hash = await fn();
+    } catch (e: any) {
       const raw = e?.message ?? String(e);
+      const rejected = /reject|denied|4001/i.test(raw);
       const idBug = /unmarshal string into|Request\.id of type int|RPC submit/i.test(raw);
       setError(
-        idBug
-          ? "Your wallet is broadcasting through a network whose RPC the GenLayer node rejects. In your wallet, set the GenLayer Bradbury (chain 4221) RPC URL to this site’s /rpc endpoint, then retry. Email-login (embedded) wallets are routed automatically."
-          : raw,
+        rejected
+          ? "Signature was rejected in your wallet."
+          : idBug
+            ? "Your wallet sent a request the GenLayer node rejected. Approve the GenLayer Snap when MetaMask prompts, or use Rabby."
+            : raw,
       );
       setNotice(null);
+      setBusy(false);
+      return;
     }
+    setBusy(false);
+    setTxHash(hash);
+    setNotice(`${label} submitted — pending consensus`);
+    setDrawer(null);
+    pollTx(hash, label).catch(() => {});
   }
 
   return (
@@ -164,7 +201,17 @@ export default function App() {
 
           {!w.enabled && <div className="banner info">Observation only — set <code>VITE_PRIVY_APP_ID</code> in <code>frontend/.env</code> to attest as steward and authorize epochs.</div>}
           {error && <div className="banner error">{error}</div>}
-          {notice && <div className="banner info">{notice}</div>}
+          {notice && (
+            <div className="banner info">
+              {busy && <span className="spin" aria-hidden />}
+              <span>{notice}</span>
+              {txHash && (
+                <a className="banner-link" href={txUrl(txHash)} target="_blank" rel="noreferrer">
+                  view on explorer ↗
+                </a>
+              )}
+            </div>
+          )}
 
           {/* ---- Docket: treasury vessel + active covenant instrument ---- */}
           <section className="docket">

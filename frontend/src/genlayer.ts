@@ -151,16 +151,31 @@ export async function getWriteClient(wallet: any) {
   // json-rpc ids — which is what makes a wallet-signed tx actually land, since
   // the node rejects the string ids a raw wallet broadcast would send.
   if (!isEmbedded && injected) {
-    const client = createClient({ chain: testnetBradbury, account: address } as any);
-    await (client as any).connect("testnetBradbury");
-    return client;
+    try {
+      const client = createClient({ chain: testnetBradbury, account: address } as any);
+      await (client as any).connect("testnetBradbury");
+      return client;
+    } catch {
+      // Wallet doesn't support Snaps (e.g. Rabby) — fall through to direct
+      // broadcast. Wallets that already send integer ids work fine this way.
+    }
   }
 
-  // Embedded (Privy) wallet has no Snap: route its broadcast through the
-  // id-normalizing /rpc proxy instead.
+  // Embedded (Privy) or non-Snap wallet: broadcast through the provider, with the
+  // chain pointed at the id-normalizing /rpc proxy.
   const provider = await wallet.getEthereumProvider();
   await ensureWalletNetwork(provider);
   return createClient({ chain: testnetBradbury, account: address, provider } as any);
+}
+
+/** Lightweight status read for polling a submitted tx (no blocking). */
+export async function getTxStatus(hash: string): Promise<string> {
+  try {
+    const r: any = await reader().getTransaction({ hash: hash as any });
+    return (r?.statusName ?? r?.status ?? "PENDING") as string;
+  } catch {
+    return "PENDING";
+  }
 }
 
 export async function writeContract(
@@ -176,11 +191,7 @@ export async function writeContract(
     args,
     value,
   });
-  // Best-effort: wait for acceptance if the client supports it.
-  try {
-    await (client as any).waitForTransactionReceipt?.({ hash, status: "ACCEPTED" });
-  } catch {
-    /* non-fatal */
-  }
+  // Return immediately — do NOT block on consensus. The caller shows the hash
+  // and polls status via getTxStatus so the UI never hangs on slow finality.
   return hash as string;
 }

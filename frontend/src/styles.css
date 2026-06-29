@@ -994,3 +994,19 @@ body {
 .lp-icon { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; color: var(--vellum-2); border: 1px solid var(--rule); transition: color 0.15s, border-color 0.15s, background 0.15s; }
 .lp-icon:hover { color: var(--vellum-0); border-color: var(--rule-3); background: var(--ink-2); }
 @media (max-width: 720px) { .lp-nav-links a:not(.lp-icon) { display: none; } }
+
+
+/* Write-action feedback: spinner + explorer link in the status banner */
+.banner.info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.banner .spin {
+  width: 14px; height: 14px; flex: 0 0 auto;
+  border: 2px solid currentColor; border-right-color: transparent;
+  border-radius: 50%; display: inline-block;
+  animation: gl-spin 0.7s linear infinite; opacity: 0.85;
+}
+.banner .banner-link {
+  margin-left: auto; font-weight: 600; text-decoration: none;
+  border-bottom: 1px solid currentColor; padding-bottom: 1px; white-space: nowrap;
+}
+.banner .banner-link:hover { opacity: 0.8; }
+@keyframes gl-spin { to { transform: rotate(360deg); } }
