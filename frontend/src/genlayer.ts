@@ -4,73 +4,46 @@ import { testnetBradbury } from "genlayer-js/chains";
 export const CONTRACT_ADDRESS = (import.meta.env.VITE_CONTRACT_ADDRESS || "") as `0x${string}`;
 export const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID || "4221");
 
-// Broadcast endpoint that guarantees an INTEGER json-rpc id (the GenLayer node
-// rejects string ids). In production this is the same-origin /rpc proxy
-// (Cloudflare Pages Function); locally we hit the node directly.
-function broadcastRpc(): string {
+// The GenLayer node rejects string JSON-RPC ids. Wallets (MetaMask, embedded)
+// broadcast `eth_sendTransaction` through whatever RPC they have saved for the
+// chain — and they send string ids. The same-origin /rpc proxy (a Cloudflare
+// Pages Function) normalizes every id to an integer. So the wallet must be
+// pointed at /rpc for this chain. In production that's `${origin}/rpc`; locally
+// there's no Function, so use the node directly.
+function chainRpcUrl(): string {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const local = origin.includes("localhost") || origin.includes("127.0.0.1");
   return !origin || local ? "https://rpc-bradbury.genlayer.com" : `${origin}/rpc`;
 }
 
-async function sendRawViaProxy(raw: string): Promise<string> {
-  const res = await fetch(broadcastRpc(), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_sendRawTransaction", params: [raw] }),
-  });
-  const data = await res.json();
-  if (data?.error) throw data.error;
-  return data.result as string;
-}
+const CHAIN_ID_HEX = `0x${CHAIN_ID.toString(16)}`;
 
 /**
- * Wrap an embedded-wallet (Privy) EIP-1193 provider.
- *
- * Privy broadcasts `eth_sendTransaction` through its OWN relay using a string
- * json-rpc id, which the GenLayer node refuses ("cannot unmarshal string into
- * Request.id of type int"), so wallet-signed txs never land. We can't change
- * Privy's relay or its id format.
- *
- * Fix: intercept `eth_sendTransaction`. Have the wallet only SIGN the
- * fully-formed tx via `eth_signTransaction` (offline — genlayer-js already
- * supplies nonce/gas/gasPrice/chainId), then broadcast the raw signed tx
- * ourselves with an integer id. Everything else passes through.
+ * Make the connected wallet use the /rpc proxy as its RPC for the GenLayer
+ * chain, so its broadcasts go through id-normalization. We (re)register the
+ * network via wallet_addEthereumChain pointing at the proxy, then switch to it.
+ * Injected wallets (MetaMask) keep their own per-network RPC, so this is the
+ * only way to route their broadcast through the proxy.
  */
-function wrapWalletProvider(provider: any) {
-  return {
-    ...provider,
-    async request(args: { method: string; params?: any[] }) {
-      if (args?.method !== "eth_sendTransaction") {
-        return provider.request(args);
-      }
-      console.warn("[GL] intercept eth_sendTransaction; trying eth_signTransaction…");
-      let signed: any;
-      try {
-        signed = await provider.request({ method: "eth_signTransaction", params: args.params ?? [] });
-        console.warn("[GL] eth_signTransaction OK; type=", typeof signed, "value=", signed);
-      } catch (e: any) {
-        console.warn("[GL] eth_signTransaction FAILED:", e?.message ?? e, e);
-        const msg = String(e?.message ?? e?.data?.message ?? e?.data ?? "").toLowerCase();
-        // Only wallets that genuinely can't sign-only (e.g. MetaMask, which already
-        // uses integer ids) fall back to their own broadcast.
-        if (msg.includes("not support") || msg.includes("unsupported") || msg.includes("method not") || msg.includes("not available") || msg.includes("invalid") || msg.includes("unknown")) {
-          console.warn("[GL] falling back to wallet eth_sendTransaction broadcast");
-          return provider.request(args);
-        }
-        throw e;
-      }
-      const raw =
-        typeof signed === "string"
-          ? signed
-          : signed?.raw ?? signed?.rawTransaction ?? signed?.serialized ?? signed?.signedTransaction ?? signed?.signature;
-      if (typeof raw !== "string" || !raw.startsWith("0x")) {
-        throw new Error("Wallet returned an unexpected signed-transaction format; cannot broadcast.");
-      }
-      console.warn("[GL] broadcasting raw via", broadcastRpc());
-      return sendRawViaProxy(raw);
-    },
+async function ensureWalletNetwork(provider: any) {
+  const rpc = chainRpcUrl();
+  const params = {
+    chainId: CHAIN_ID_HEX,
+    chainName: "GenLayer Bradbury",
+    nativeCurrency: { name: "GEN", symbol: "GEN", decimals: 18 },
+    rpcUrls: [rpc],
+    blockExplorerUrls: ["https://explorer-bradbury.genlayer.com"],
   };
+  try {
+    await provider.request({ method: "wallet_addEthereumChain", params: [params] });
+  } catch {
+    /* already added / user dismissed — continue */
+  }
+  try {
+    await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: CHAIN_ID_HEX }] });
+  } catch {
+    /* ignore */
+  }
 }
 
 export type Covenant = {
@@ -168,17 +141,19 @@ export const api = {
  */
 export async function getWriteClient(wallet: any) {
   ensureConfigured();
-  // Make sure the wallet is on the GenLayer chain before signing.
+  const provider = await wallet.getEthereumProvider();
+  // Point the wallet's RPC for this chain at the id-normalizing /rpc proxy so
+  // its broadcast doesn't hit the node with a string id.
+  await ensureWalletNetwork(provider);
   try {
     await wallet.switchChain(CHAIN_ID);
   } catch {
-    /* some wallets auto-handle the chain; ignore */
+    /* already handled by ensureWalletNetwork */
   }
-  const provider = await wallet.getEthereumProvider();
   return createClient({
     chain: testnetBradbury,
     account: wallet.address as `0x${string}`,
-    provider: wrapWalletProvider(provider),
+    provider,
   } as any);
 }
 
