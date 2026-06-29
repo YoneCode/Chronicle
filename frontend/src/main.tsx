@@ -10,14 +10,10 @@ import "./styles.css";
 const privyAppId = (import.meta.env.VITE_PRIVY_APP_ID || "").trim();
 const chainId = Number(import.meta.env.VITE_CHAIN_ID || "4221");
 
-// Privy's wallet talks to the chain RPC with string JSON-RPC ids, which the
-// GenLayer node rejects ("cannot unmarshal string into Request.id of type int").
-// In production we route Privy through the same-origin /rpc proxy (a Cloudflare
-// Pages Function) that normalizes every id to an integer. Local dev has no
-// Function, so fall back to the node directly there.
-const origin = typeof window !== "undefined" ? window.location.origin : "";
-const isLocal = origin.includes("localhost") || origin.includes("127.0.0.1");
-const walletRpc = !origin || isLocal ? "https://rpc-bradbury.genlayer.com" : `${origin}/rpc`;
+// Use the official GenLayer Bradbury RPC, exactly like every other GenLayer
+// dApp. Wallet signing goes through the GenLayer MetaMask Snap (installed by
+// genlayer-js's client.connect), which handles GenLayer consensus submission.
+const walletRpc = "https://rpc-bradbury.genlayer.com";
 
 const bradbury = {
   id: chainId,

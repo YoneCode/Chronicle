@@ -4,48 +4,6 @@ import { testnetBradbury } from "genlayer-js/chains";
 export const CONTRACT_ADDRESS = (import.meta.env.VITE_CONTRACT_ADDRESS || "") as `0x${string}`;
 export const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID || "4221");
 
-// The GenLayer node rejects string JSON-RPC ids. Wallets (MetaMask, embedded)
-// broadcast `eth_sendTransaction` through whatever RPC they have saved for the
-// chain — and they send string ids. The same-origin /rpc proxy (a Cloudflare
-// Pages Function) normalizes every id to an integer. So the wallet must be
-// pointed at /rpc for this chain. In production that's `${origin}/rpc`; locally
-// there's no Function, so use the node directly.
-function chainRpcUrl(): string {
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const local = origin.includes("localhost") || origin.includes("127.0.0.1");
-  return !origin || local ? "https://rpc-bradbury.genlayer.com" : `${origin}/rpc`;
-}
-
-const CHAIN_ID_HEX = `0x${CHAIN_ID.toString(16)}`;
-
-/**
- * Make the connected wallet use the /rpc proxy as its RPC for the GenLayer
- * chain, so its broadcasts go through id-normalization. We (re)register the
- * network via wallet_addEthereumChain pointing at the proxy, then switch to it.
- * Injected wallets (MetaMask) keep their own per-network RPC, so this is the
- * only way to route their broadcast through the proxy.
- */
-async function ensureWalletNetwork(provider: any) {
-  const rpc = chainRpcUrl();
-  const params = {
-    chainId: CHAIN_ID_HEX,
-    chainName: "GenLayer Bradbury",
-    nativeCurrency: { name: "GEN", symbol: "GEN", decimals: 18 },
-    rpcUrls: [rpc],
-    blockExplorerUrls: ["https://explorer-bradbury.genlayer.com"],
-  };
-  try {
-    await provider.request({ method: "wallet_addEthereumChain", params: [params] });
-  } catch {
-    /* already added / user dismissed — continue */
-  }
-  try {
-    await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: CHAIN_ID_HEX }] });
-  } catch {
-    /* ignore */
-  }
-}
-
 export type Covenant = {
   covenant_id: string;
   owner: string;
@@ -145,26 +103,20 @@ export async function getWriteClient(wallet: any) {
   const injected = typeof window !== "undefined" ? (window as any).ethereum : undefined;
   const isEmbedded = wallet?.walletClientType === "privy" || wallet?.connectorType === "embedded";
 
-  // Official GenLayer browser flow for injected wallets (MetaMask, Rabby, …):
-  // client.connect() installs the GenLayer MetaMask Snap and switches the wallet
-  // to Bradbury. The Snap performs GenLayer signing/submission with INTEGER
-  // json-rpc ids — which is what makes a wallet-signed tx actually land, since
-  // the node rejects the string ids a raw wallet broadcast would send.
+  // Standard GenLayer browser flow (same as every other GenLayer dApp):
+  // client.connect() switches the wallet to Bradbury and installs the GenLayer
+  // MetaMask Snap, which signs and submits through GenLayer's consensus path.
   if (!isEmbedded && injected) {
     try {
       const client = createClient({ chain: testnetBradbury, account: address } as any);
       await (client as any).connect("testnetBradbury");
       return client;
     } catch {
-      // Wallet doesn't support Snaps (e.g. Rabby) — fall through to direct
-      // broadcast. Wallets that already send integer ids work fine this way.
+      /* wallet doesn't support Snaps (e.g. Rabby) — use direct broadcast below */
     }
   }
 
-  // Embedded (Privy) or non-Snap wallet: broadcast through the provider, with the
-  // chain pointed at the id-normalizing /rpc proxy.
   const provider = await wallet.getEthereumProvider();
-  await ensureWalletNetwork(provider);
   return createClient({ chain: testnetBradbury, account: address, provider } as any);
 }
 
