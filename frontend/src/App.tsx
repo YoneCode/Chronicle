@@ -5,6 +5,7 @@ import { gen, pct, fmtPct, bpsToPct, shortAddr, toBig, health } from "./format";
 import { txUrl } from "./lifecycle";
 import { Sigil, Strata, Engraving, Strand, MiniStrata } from "./charts";
 import { WalletPill } from "./WalletPill";
+import { WalletNotice } from "./WalletNotice";
 
 const I = {
   docket: <svg className="rail-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M3 1.5h7l3 3v10H3z" /><path d="M10 1.5v3h3M5.5 8h5M5.5 11h5" /></svg>,
@@ -182,6 +183,7 @@ export default function App() {
 
       <main className="workspace">
         <div className="wrap">
+          <WalletNotice />
           <header className="cmdbar" id="docket">
             <div className="cmd-title">
               <h1>The Covenant Chancery</h1>
