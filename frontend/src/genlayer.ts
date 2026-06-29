@@ -4,6 +4,70 @@ import { testnetBradbury } from "genlayer-js/chains";
 export const CONTRACT_ADDRESS = (import.meta.env.VITE_CONTRACT_ADDRESS || "") as `0x${string}`;
 export const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID || "4221");
 
+// Broadcast endpoint that guarantees an INTEGER json-rpc id (the GenLayer node
+// rejects string ids). In production this is the same-origin /rpc proxy
+// (Cloudflare Pages Function); locally we hit the node directly.
+function broadcastRpc(): string {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const local = origin.includes("localhost") || origin.includes("127.0.0.1");
+  return !origin || local ? "https://rpc-bradbury.genlayer.com" : `${origin}/rpc`;
+}
+
+async function sendRawViaProxy(raw: string): Promise<string> {
+  const res = await fetch(broadcastRpc(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_sendRawTransaction", params: [raw] }),
+  });
+  const data = await res.json();
+  if (data?.error) throw data.error;
+  return data.result as string;
+}
+
+/**
+ * Wrap an embedded-wallet (Privy) EIP-1193 provider.
+ *
+ * Privy broadcasts `eth_sendTransaction` through its OWN relay using a string
+ * json-rpc id, which the GenLayer node refuses ("cannot unmarshal string into
+ * Request.id of type int"), so wallet-signed txs never land. We can't change
+ * Privy's relay or its id format.
+ *
+ * Fix: intercept `eth_sendTransaction`. Have the wallet only SIGN the
+ * fully-formed tx via `eth_signTransaction` (offline — genlayer-js already
+ * supplies nonce/gas/gasPrice/chainId), then broadcast the raw signed tx
+ * ourselves with an integer id. Everything else passes through.
+ */
+function wrapWalletProvider(provider: any) {
+  return {
+    ...provider,
+    async request(args: { method: string; params?: any[] }) {
+      if (args?.method !== "eth_sendTransaction") {
+        return provider.request(args);
+      }
+      let signed: any;
+      try {
+        signed = await provider.request({ method: "eth_signTransaction", params: args.params ?? [] });
+      } catch (e: any) {
+        const msg = String(e?.message ?? e?.data?.message ?? e?.data ?? "").toLowerCase();
+        // Only wallets that genuinely can't sign-only (e.g. MetaMask, which already
+        // uses integer ids) fall back to their own broadcast.
+        if (msg.includes("not support") || msg.includes("unsupported") || msg.includes("method not") || msg.includes("not available")) {
+          return provider.request(args);
+        }
+        throw e;
+      }
+      const raw =
+        typeof signed === "string"
+          ? signed
+          : signed?.raw ?? signed?.rawTransaction ?? signed?.serialized ?? signed?.signedTransaction ?? signed?.signature;
+      if (typeof raw !== "string" || !raw.startsWith("0x")) {
+        throw new Error("Wallet returned an unexpected signed-transaction format; cannot broadcast.");
+      }
+      return sendRawViaProxy(raw);
+    },
+  };
+}
+
 export type Covenant = {
   covenant_id: string;
   owner: string;
@@ -109,7 +173,7 @@ export async function getWriteClient(wallet: any) {
   return createClient({
     chain: testnetBradbury,
     account: wallet.address as `0x${string}`,
-    provider,
+    provider: wrapWalletProvider(provider),
   } as any);
 }
 
