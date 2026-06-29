@@ -44,14 +44,18 @@ function wrapWalletProvider(provider: any) {
       if (args?.method !== "eth_sendTransaction") {
         return provider.request(args);
       }
+      console.warn("[GL] intercept eth_sendTransaction; trying eth_signTransaction…");
       let signed: any;
       try {
         signed = await provider.request({ method: "eth_signTransaction", params: args.params ?? [] });
+        console.warn("[GL] eth_signTransaction OK; type=", typeof signed, "value=", signed);
       } catch (e: any) {
+        console.warn("[GL] eth_signTransaction FAILED:", e?.message ?? e, e);
         const msg = String(e?.message ?? e?.data?.message ?? e?.data ?? "").toLowerCase();
         // Only wallets that genuinely can't sign-only (e.g. MetaMask, which already
         // uses integer ids) fall back to their own broadcast.
-        if (msg.includes("not support") || msg.includes("unsupported") || msg.includes("method not") || msg.includes("not available")) {
+        if (msg.includes("not support") || msg.includes("unsupported") || msg.includes("method not") || msg.includes("not available") || msg.includes("invalid") || msg.includes("unknown")) {
+          console.warn("[GL] falling back to wallet eth_sendTransaction broadcast");
           return provider.request(args);
         }
         throw e;
@@ -63,6 +67,7 @@ function wrapWalletProvider(provider: any) {
       if (typeof raw !== "string" || !raw.startsWith("0x")) {
         throw new Error("Wallet returned an unexpected signed-transaction format; cannot broadcast.");
       }
+      console.warn("[GL] broadcasting raw via", broadcastRpc());
       return sendRawViaProxy(raw);
     },
   };
