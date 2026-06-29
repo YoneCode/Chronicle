@@ -4,6 +4,35 @@ import { testnetBradbury } from "genlayer-js/chains";
 export const CONTRACT_ADDRESS = (import.meta.env.VITE_CONTRACT_ADDRESS || "") as `0x${string}`;
 export const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID || "4221");
 
+const CHAIN_ID_HEX = `0x${CHAIN_ID.toString(16)}`;
+
+// MetaMask broadcasts with string JSON-RPC ids, which the GenLayer node rejects
+// ("cannot unmarshal string into Request.id of type int"). The same-origin /rpc
+// proxy (a Cloudflare Pages Function) rewrites every id to an integer before
+// forwarding to the node, so the wallet's broadcast is accepted. We point the
+// wallet's chain RPC at it. Locally there's no Function, so use the node.
+function chainRpcUrl(): string {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const local = origin.includes("localhost") || origin.includes("127.0.0.1");
+  return !origin || local ? "https://rpc-bradbury.genlayer.com" : `${origin}/rpc`;
+}
+
+async function ensureWalletNetwork(provider: any) {
+  const params = {
+    chainId: CHAIN_ID_HEX,
+    chainName: "GenLayer Bradbury",
+    nativeCurrency: { name: "GEN", symbol: "GEN", decimals: 18 },
+    rpcUrls: [chainRpcUrl()],
+    blockExplorerUrls: ["https://explorer-bradbury.genlayer.com"],
+  };
+  try {
+    await provider.request({ method: "wallet_addEthereumChain", params: [params] });
+  } catch { /* exists / dismissed */ }
+  try {
+    await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: CHAIN_ID_HEX }] });
+  } catch { /* ignore */ }
+}
+
 export type Covenant = {
   covenant_id: string;
   owner: string;
@@ -100,23 +129,11 @@ export const api = {
 export async function getWriteClient(wallet: any) {
   ensureConfigured();
   const address = wallet.address as `0x${string}`;
-  const injected = typeof window !== "undefined" ? (window as any).ethereum : undefined;
-  const isEmbedded = wallet?.walletClientType === "privy" || wallet?.connectorType === "embedded";
-
-  // Standard GenLayer browser flow (same as every other GenLayer dApp):
-  // client.connect() switches the wallet to Bradbury and installs the GenLayer
-  // MetaMask Snap, which signs and submits through GenLayer's consensus path.
-  if (!isEmbedded && injected) {
-    try {
-      const client = createClient({ chain: testnetBradbury, account: address } as any);
-      await (client as any).connect("testnetBradbury");
-      return client;
-    } catch {
-      /* wallet doesn't support Snaps (e.g. Rabby) — use direct broadcast below */
-    }
-  }
-
   const provider = await wallet.getEthereumProvider();
+  // Point the wallet's chain RPC at the /rpc proxy so its broadcast carries an
+  // integer json-rpc id the GenLayer node accepts. (MetaMask sends string ids;
+  // the node rejects them. The proxy normalizes every id.)
+  await ensureWalletNetwork(provider);
   return createClient({ chain: testnetBradbury, account: address, provider } as any);
 }
 

@@ -10,10 +10,13 @@ import "./styles.css";
 const privyAppId = (import.meta.env.VITE_PRIVY_APP_ID || "").trim();
 const chainId = Number(import.meta.env.VITE_CHAIN_ID || "4221");
 
-// Use the official GenLayer Bradbury RPC, exactly like every other GenLayer
-// dApp. Wallet signing goes through the GenLayer MetaMask Snap (installed by
-// genlayer-js's client.connect), which handles GenLayer consensus submission.
-const walletRpc = "https://rpc-bradbury.genlayer.com";
+// MetaMask broadcasts with string JSON-RPC ids that the GenLayer node rejects.
+// In production we route the wallet through the same-origin /rpc proxy (a
+// Cloudflare Pages Function) that rewrites ids to integers. Local dev has no
+// Function, so use the node directly there.
+const origin = typeof window !== "undefined" ? window.location.origin : "";
+const isLocal = origin.includes("localhost") || origin.includes("127.0.0.1");
+const walletRpc = !origin || isLocal ? "https://rpc-bradbury.genlayer.com" : `${origin}/rpc`;
 
 const bradbury = {
   id: chainId,
